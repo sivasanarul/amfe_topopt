@@ -18,7 +18,6 @@ f_int()
 dimension
 """
 import numpy as np
-
 from amfe.solver.tools import MemoizeStiffness, MemoizeConstant, MakeConstantCallable
 from amfe.constraint.constraint_formulation_boolean_elimination import BooleanEliminationConstraintFormulation
 from amfe.constraint.constraint_formulation_lagrange_multiplier import SparseLagrangeMultiplierConstraintFormulation
@@ -58,7 +57,7 @@ class MechanicalSystem:
         contains tags for constant parts of the system
 
     """
-    def __init__(self, dimension, M_func, D_func, K_func, f_ext_func, f_int_func=None, constants=tuple()):
+    def __init__(self, dimension, M_func, D_func, K_func, f_ext_func, f_int_func=None, constants=tuple(), strains_and_stresses_func = None):
         """
         The system-behavior is defined during the translator's instantiation. In the default nonlinear case, just hand
         over the system's callbacks. If a complete or partly linear system shall be defined, either use preset matrices
@@ -110,6 +109,7 @@ class MechanicalSystem:
         self._M_func = _check_and_set_attribute('M', M_func)
         self._D_func = _check_and_set_attribute('D', D_func)
         self._K_func = _check_and_set_attribute('K', K_func)
+        self._strains_and_stresses_func = strains_and_stresses_func
 
         if f_int_func is None:
             if 'K' in self._constants and 'D' in self._constants:
@@ -155,23 +155,36 @@ class MechanicalSystem:
     def system_is_linear(self):
         return self._system_is_linear
 
+    def strains_and_stresses(self, q, dq, t):
+        if self._strains_and_stresses_func is None:
+            strains = None
+            stresses = None
+            logger = logging.getLogger(__name__)
+            logger.warning('Strains and stresses were called, but no callback-function has been defined')
+        else:
+            strains, stresses = self._strains_and_stresses_func(q, dq, t)
+
+        return strains, stresses
+
 
 class MulticomponentMechanicalSystem:
     """
     Translator for a system, that consists of several components.
     """
-    def __init__(self, composite, constant_mass=False, constant_damping=False, constraint_formulation='boolean',
-                                                                                            **formulation_options):
+    def __init__(self, composite, constant_mass=False, constant_damping=False, all_linear=False,
+                 constraint_formulation='boolean', **formulation_options):
+
         self.mechanical_systems = dict()
         self.constraint_formulations = dict()
         for comp_id, component in composite.components.items():
             if component._constraints.no_of_constraints == 0:
                 new_mechanical_system = create_mechanical_system_from_structural_component(component, constant_mass,
-                                                                                           constant_damping)
+                                                                                           constant_damping, all_linear)
             else:
                 new_mechanical_system, formulation = create_constrained_mechanical_system_from_component(component,
-                                                                constant_mass, constant_damping, constraint_formulation,
-                                                                                                **formulation_options)
+                                                                constant_mass, constant_damping, all_linear,
+                                                                constraint_formulation, **formulation_options)
+
                 self.constraint_formulations[comp_id] = formulation
 
             self.mechanical_systems[comp_id] = new_mechanical_system
@@ -197,8 +210,10 @@ class MulticomponentMechanicalSystem:
         B : ndarray
             connection-matrix with dof-dimension of the constrained system
         """
-        if key[-1] in self.constraint_formulations:
-            B_constrained = self.constraint_formulations[key[-1]].L.T @ self.connector.constraints[key].T
+        if key[0] in self.constraint_formulations:
+            B_constrained = self.constraint_formulations[key[0]].L.T @ self.connector.constraints[key].T
+            non_zero_cols = B_constrained.getnnz(0) > 0
+            B_constrained = B_constrained[:, non_zero_cols]
         else:
             B_constrained = self.connector.constraints[key].T
         return B_constrained.T
@@ -249,8 +264,8 @@ class MulticomponentMechanicalSystem:
         return u, du, ddu
 
 
-def create_mechanical_system_from_structural_component(structural_component, constant_mass=False,
-                                                       constant_damping=False, all_linear=False):
+def create_mechanical_system_from_structural_component(structural_component, constant_mass=True,
+                                                       constant_damping=True, all_linear=False):
     """
     Create a MechanicalSystem Object from a structural component
 
@@ -282,14 +297,16 @@ def create_mechanical_system_from_structural_component(structural_component, con
     dimension = structural_component.mapping.no_of_dofs
 
     if all_linear:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants)
+        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants,
+                                  strains_and_stresses_func=structural_component.strains_and_stresses)
     else:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants)
+        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants,
+                                  strains_and_stresses_func=structural_component.strains_and_stresses)
     return system
 
 
-def create_constrained_mechanical_system_from_component(structural_component, constant_mass=False,
-                                                        constant_damping=False, all_linear=False,
+def create_constrained_mechanical_system_from_component(structural_component, constant_mass=True,
+                                                        constant_damping=True, all_linear=False,
                                                         constraint_formulation='boolean', **formulation_options):
     """
     Create a mechanical system from a component where the constraints are applied by a constraint formulation
@@ -332,9 +349,11 @@ def create_constrained_mechanical_system_from_component(structural_component, co
 
     dimension = constraint_formulation.dimension
     if all_linear:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants)
+        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants,
+                                  strains_and_stresses_func=structural_component.strains_and_stresses)
     else:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants)
+        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants,
+                                  strains_and_stresses_func=structural_component.strains_and_stresses)
 
     return system, constraint_formulation
 

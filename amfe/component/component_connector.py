@@ -59,8 +59,8 @@ class ComponentConnector:
         slave_nodeids, master_nodeids = self.mesh_tying.check_node_compatibility(slave_component.mesh,
                                                                                  master_component.mesh)
         
-        master_key = (loc_slave_id, loc_master_id)
-        slave_key = (loc_master_id, loc_slave_id)
+        master_key = (loc_master_id, loc_slave_id)
+        slave_key = (loc_slave_id, loc_master_id)
         if slave_nodeids.size != 0 and master_nodeids.size != 0:
             slave_dofids = np.reshape(slave_component.mapping.get_dofs_by_nodeids(slave_nodeids), -1)
             master_dofids = np.reshape(master_component.mapping.get_dofs_by_nodeids(master_nodeids), -1)
@@ -124,10 +124,10 @@ class ComponentConnector:
 
         for idx, compid in enumerate(component_ids):
             for key in self.constraints:
-                if key[-1] == compid and key not in used_keys:
+                if key[0] == compid and key not in used_keys:
                     key_neighbor = (key[-1], key[0])
 
-                    neighbor_idx = int(np.where(component_ids == int(key_neighbor[-1]))[0])
+                    neighbor_idx = int(np.where(component_ids == int(key_neighbor[0]))[0])
 
                     n_rows = int(self.constraints[key].shape[0])
 

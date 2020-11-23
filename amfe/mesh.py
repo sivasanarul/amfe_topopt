@@ -401,13 +401,15 @@ class Mesh:
                 nodeid = None
         return nodeid
 
-    def get_nodeids_by_x_coordinates(self, x, epsilon):
+    def get_nodeids_by_coordinate_axis(self, c, axis, epsilon):
         """
 
         Parameters
         ----------
-        x : float
-            x-coordinate where the searched node is located at
+        c : float
+            coordinate where the searched nodes are located at the given axis
+        axis : str
+            axis for the search-coordinate, e.g. x, y, z
         epsilon : float
             radius that acceptable as tolerance for the location
         Returns
@@ -415,7 +417,7 @@ class Mesh:
         nodeids : ndarray
             ndarray the nodeids that fulfill the condition
         """
-        nodeids = self.nodes_df.index[((self.nodes_df['x'] - x).abs() - epsilon) <= 0].tolist()
+        nodeids = self.nodes_df.index[((self.nodes_df[axis] - c).abs() - epsilon) <= 0].tolist()
         return np.array(nodeids, dtype=int)
 
     def get_nodeids_by_lesser_equal_x_coordinates(self, x, epsilon):

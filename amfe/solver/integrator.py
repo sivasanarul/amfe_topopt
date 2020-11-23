@@ -23,9 +23,10 @@ from copy import copy
 __all__ = [
     'LinearIntegrationStepper',
     'NonlinearIntegrationStepper',
-    'NonlinearStatic',
     'GeneralizedAlpha',
+    'VelocityGeneralizedAlpha',
     'NewmarkBeta',
+    'VelocityNewmarkBeta',
     'WBZAlpha',
     'HHTAlpha'
 ]
@@ -102,7 +103,7 @@ class LinearIntegrationStepper(IntegrationStepperBase):
 
         q_p = copy(self._integrator.q_p)
 
-        q_p += self.linear_solver_func(self._integrator.jacobian(q_p), -self._integrator.residual(q_p),
+        q_p += self.linear_solver_func(self._integrator.jacobian(q_p), -self._integrator.residual_int(q_p)+self._integrator.residual_ext(q_p),
                                        **self.linear_solver_kwargs)
 
         self._integrator.set_correction(q_p)
@@ -154,29 +155,22 @@ class NonlinearIntegrationStepper(IntegrationStepperBase):
         """
 
         super().__init__(integrator)
-        self.nonlinear_solver_func = None
-        self._nonlinear_solver_options = dict()
+        self.loadpath_control_func = None
+        self._loadpath_control_options = dict()
         self._additional_callbacks = ()
-        self._rtol = 0.0
-        self._atol = 1e-8
-        self._rtol_scaling = 0.0
 
     @property
-    def nonlinear_solver_options(self):
-        atol = self._atol + self._rtol * self._rtol_scaling
-        nonlinear_solver_options = copy(self._nonlinear_solver_options)
-        nonlinear_solver_options.update({'atol': atol})
+    def loadpath_control_options(self):
+        nonlinear_solver_options = copy(self._loadpath_control_options)
         return nonlinear_solver_options
 
-    @nonlinear_solver_options.setter
-    def nonlinear_solver_options(self, dic):
+    @loadpath_control_options.setter
+    def loadpath_control_options(self, dic):
         additional_callbacks = dic.pop('callback', ())
         if not isinstance(additional_callbacks, tuple):
-            additional_callbacks = (additional_callbacks, )
+            additional_callbacks = (additional_callbacks,)
         self._additional_callbacks = additional_callbacks
-        self._rtol = dic.pop('rtol', self._rtol)
-        self._atol = dic.pop('atol', self._atol)
-        self._nonlinear_solver_options = dic
+        self._loadpath_control_options = dic
 
     def newton_callback(self, x_p, res):
         """
@@ -203,14 +197,14 @@ class NonlinearIntegrationStepper(IntegrationStepperBase):
     def step(self, t_n, q_n, dq_n, ddq_n):
         """
         Stepper method for solving a time-step by predicting the solution, then solving the system with a selected solver and finally correcting the solution.
-        
+
         Parameters
         ----------
         t_n : float
         q_n : ndarray
         dq_n : ndarray
         ddq_n : ndarray
-        
+
         Returns
         -------
         t_n+1 : float
@@ -222,18 +216,13 @@ class NonlinearIntegrationStepper(IntegrationStepperBase):
         # Predict start for Newton-iteration
         self._integrator.set_prediction(q_n, dq_n, ddq_n, t_n)
 
-        start_residual = np.linalg.norm(self._integrator.residual(self._integrator.q_p))
-        self._rtol_scaling = start_residual
-
         # Add right callbacks to options and correct atol
-        nonlinear_solver_options = self.nonlinear_solver_options
-
-        print('Start residual: {0:6.3E}'.format(start_residual))
+        loadpath_control_options = self.loadpath_control_options
 
         # Start Newton Iterations
-        q_p, iteration_info = self.nonlinear_solver_func(self._integrator.residual, self._integrator.q_p, (),
-                                                         self._integrator.jacobian, None,
-                                                         self.newton_callback, nonlinear_solver_options)
+        q_p, iteration_info = self.loadpath_control_func(self._integrator.residual_int, self._integrator.residual_ext,
+                                                          self._integrator.q_p, self._integrator.jacobian,
+                                                          self.newton_callback, loadpath_control_options)
 
         # Correct all states with the new solution
         self._integrator.set_correction(q_p)
@@ -287,136 +276,20 @@ class OneStepIntegratorBase:
         self.dq_p = None
         self.ddq_p = None
 
-    def residual(self, q_p):
-        raise NotImplementedError('Residual function was not implemented for subclass')
-    
+    def residual_int(self, q_p):
+        raise NotImplementedError('Internal residual function was not implemented for subclass')
+
+    def residual_ext(self, q_p):
+        raise NotImplementedError('External residual function was not implemented for subclass')
+
     def jacobian(self, q_p):
         raise NotImplementedError('Jacobian function was not implemented for subclass')
-    
+
     def set_prediction(self, q_n, dq_n, ddq_n, t_n):
         raise NotImplementedError('Prediction function was not implemented for subclass')
     
     def set_correction(self, q_p):
         raise NotImplementedError('Correction function was not implemented for subclass')
-
-
-class NonlinearStatic(OneStepIntegratorBase):
-    """
-    Load-stepping for nonlinear static problems to lower the initial residual for the nonlinear solver in a
-    load-controlled solution procedure. Load-stepping is performed as a pseudo-time-integration. The load-stepping is
-    defined outside by defining the load as function of t.
-
-    Attributes
-    ----------
-    _f_int : callable
-        callback-function for internal forces
-    _f_ext : callable
-        callback function for external forces
-    _K : callable
-        callback for jacobian of internal forces
-    """
-    def __init__(self, f_int, f_ext, K):
-        """
-        Parameters
-        ----------
-        f_int : callable
-            K-associated nonlinear function
-        f_ext : callable
-            external Neumann-conditions
-        K : callable
-            derivative of f_int for q
-
-        Returns
-        -------
-        None
-        """
-        super().__init__()
-        self._f_int = f_int
-        self._f_ext = f_ext
-        self._K = K
-
-    def residual(self, q_p):
-        """
-        Evaluates the nonlinear residual as f_int-f_ext
-
-        Parameters
-        ----------
-        q_p : ndarray
-            primary solution
-
-        Returns
-        -------
-        res : ndarray
-            current residual for q_p
-        """
-        zero_array = np.zeros_like(q_p)
-        f_ext = self._f_ext(q_p, zero_array, self.t_p)
-        res = self._f_int(q_p, zero_array, self.t_p) - f_ext
-        return res
-        
-    def jacobian(self, q_p):
-        """
-        Evaluates the nonlinear jacobian of f_int
-
-        Parameters
-        ----------
-        q_p : ndarray
-            primary solution
-
-        Returns
-        -------
-        jacobian : ndarray
-            current jacobian of f_int, K, for q_p
-        """
-        return self._K(q_p, self.dq_p, self.t_p)
-
-    def set_prediction(self, q_n, dq_n, ddq_n, t_n):
-        """
-        Prediction, that evaluates the next load-step and copies the previous solution as initialization for the
-        nonlinear solver.
-
-        Parameters
-        ----------
-        q_n : ndarray
-            primary solution
-        dq_n : None
-            unnecessary time-derivative of q
-        ddq_n : None
-            unnecessary time-derivative of dq
-        t_n : float
-            previous time
-
-        Returns
-        -------
-        None
-        """
-        zero_array = np.zeros_like(q_n)
-        self._t_n = t_n
-        self._q_n = q_n
-        self._dq_n = zero_array
-        self._ddq_n = zero_array
-
-        self.t_p = self._t_n + self.dt
-        self.q_p = self._q_n.copy()
-        self.dq_p = zero_array
-        self.ddq_p = zero_array
-        return
-    
-    def set_correction(self, q_p):
-        """
-        Updates the primary solution of the next time-step with the new solution.
-
-        Parameters
-        ----------
-        q_p : ndarray
-            primary solution
-
-        Returns
-        -------
-        None
-        """
-        self.q_p = q_p
-        return
 
 
 class GeneralizedAlpha(OneStepIntegratorBase):
@@ -511,10 +384,10 @@ class GeneralizedAlpha(OneStepIntegratorBase):
     @staticmethod
     def _get_midstep(alpha, x_n, x_p):
         return (1 - alpha) * x_p + alpha * x_n
-                
-    def residual(self, q_p):
+
+    def residual_int(self, q_p):
         """
-        Return residual for the generalized-alpha time integration scheme.
+        Return internal part of the residual for the generalized-alpha time integration scheme.
         """
         t_m = self._get_midstep(self.alpha_m, self._t_n, self.t_p)
         q_m = self._get_midstep(self.alpha_m, self._q_n, q_p)
@@ -527,9 +400,21 @@ class GeneralizedAlpha(OneStepIntegratorBase):
 
         M = self.M(q_m, dq_m, t_m)
         f_int_f = self.f_int(q_f, dq_f, t_f)
+
+        res = M @ ddq_m + f_int_f
+        return res
+
+    def residual_ext(self, q_p):
+        """
+        Return external part of the residual for the generalized-alpha time integration scheme
+        """
+        t_f = self._get_midstep(self.alpha_f, self._t_n, self.t_p)
+        q_f = self._get_midstep(self.alpha_f, self._q_n, q_p)
+        dq_f = self._get_midstep(self.alpha_f, self._dq_n, self.dq_p)
+
         f_ext_f = self.f_ext(q_f, dq_f, t_f)
 
-        res = M @ ddq_m + f_int_f - f_ext_f
+        res = - f_ext_f
         return res
 
     def jacobian(self, q_p):
@@ -568,16 +453,101 @@ class GeneralizedAlpha(OneStepIntegratorBase):
 
         self.t_p = t_n + self.dt
         return
-    
+
     def set_correction(self, q_p):
         """
         Correct variables for the generalized-alpha time integration scheme.
         """
         delta_q_p = q_p - self.q_p
 
-        self.q_p[:] = q_p[:]
+        self.q_p = copy(q_p)
         self.dq_p += self.gamma / (self.beta * self.dt) * delta_q_p
         self.ddq_p += 1 / (self.beta * self.dt ** 2) * delta_q_p
+        return
+
+
+class VelocityGeneralizedAlpha(GeneralizedAlpha):
+    def __init__(self, M, f_int, f_ext, K, D, alpha_m=0.4210526315789474, alpha_f=0.4736842105263158,
+                 beta=0.27700831024930755, gamma=0.5526315789473684):
+        super().__init__(M, f_int, f_ext, K, D, alpha_m=alpha_m, alpha_f=alpha_f, beta=beta, gamma=gamma)
+
+    def residual_int(self, dq_p):
+        """
+        Return internal part of the residual for the generalized-alpha time integration scheme.
+        """
+        t_m = self._get_midstep(self.alpha_m, self._t_n, self.t_p)
+        q_m = self._get_midstep(self.alpha_m, self._q_n, self.q_p)
+        dq_m = self._get_midstep(self.alpha_m, self._dq_n, dq_p)
+        ddq_m = self._get_midstep(self.alpha_m, self._ddq_n, self.ddq_p)
+
+        t_f = self._get_midstep(self.alpha_f, self._t_n, self.t_p)
+        q_f = self._get_midstep(self.alpha_f, self._q_n, self.q_p)
+        dq_f = self._get_midstep(self.alpha_f, self._dq_n, dq_p)
+
+        M = self.M(q_m, dq_m, t_m)
+        f_int_f = self.f_int(q_f, dq_f, t_f)
+
+        res = M @ ddq_m + f_int_f
+        return res
+
+    def residual_ext(self, dq_p):
+        """
+        Return external part of the residual for the generalized-alpha time integration scheme.
+        """
+        t_f = self._get_midstep(self.alpha_f, self._t_n, self.t_p)
+        q_f = self._get_midstep(self.alpha_f, self._q_n, self.q_p)
+        dq_f = self._get_midstep(self.alpha_f, self._dq_n, dq_p)
+
+        f_ext_f = self.f_ext(q_f, dq_f, t_f)
+
+        res = - f_ext_f
+        return res
+
+    def jacobian(self, dq_p):
+        """
+        Return Jacobian for the generalized-alpha time integration scheme.
+        """
+        t_m = self._get_midstep(self.alpha_m, self._t_n, self.t_p)
+        q_m = self._get_midstep(self.alpha_m, self._q_n, self.q_p)
+        dq_m = self._get_midstep(self.alpha_m, self._dq_n, dq_p)
+
+        t_f = self._get_midstep(self.alpha_f, self._t_n, self.t_p)
+        q_f = self._get_midstep(self.alpha_f, self._q_n, self.q_p)
+        dq_f = self._get_midstep(self.alpha_f, self._dq_n, dq_p)
+
+        M = self.M(q_m, dq_m, t_m)
+        D = self.D(q_f, dq_f, t_f)
+        K = self.K(q_f, dq_f, t_f)
+
+        Jac = (1 - self.alpha_m) / (self.gamma * self.dt) * M + (1 - self.alpha_f) * D + (1 - self.alpha_f) * self.dt * (self.beta/self.gamma) * K
+
+        return Jac
+
+    def set_prediction(self, q_n, dq_n, ddq_n, t_n):
+        """
+        Predict variables for the generalized-alpha time integration scheme.
+        """
+        self._t_n = t_n
+        self._q_n = q_n
+        self._dq_n = dq_n
+        self._ddq_n = ddq_n
+
+        self.q_p = self._q_n + self.dt * self._dq_n + self.dt ** 2 * (1 / 2 - self.beta / self.gamma) * self._ddq_n
+        self.dq_p = copy(self._dq_n)
+        self.ddq_p = - (1 - self.gamma) / self.gamma * self._ddq_n
+
+        self.t_p = t_n + self.dt
+        return
+
+    def set_correction(self, dq_p):
+        """
+        Correct variables for the generalized-alpha time integration scheme.
+        """
+        delta_dq_p = dq_p - self.dq_p
+
+        self.q_p += self.dt * self.beta / self.gamma * delta_dq_p
+        self.dq_p = copy(dq_p)
+        self.ddq_p += 1 / (self.gamma * self.dt) * delta_dq_p
         return
 
 
@@ -615,9 +585,15 @@ class NewmarkBeta(GeneralizedAlpha):
         super().__init__(M, f_int, f_ext, K, D, alpha_m, alpha_f, beta, gamma)
 
 
+class VelocityNewmarkBeta(VelocityGeneralizedAlpha):
+    def __init__(self, M, f_int, f_ext, K, D, beta=0.25, gamma=0.5):
+        alpha_m = 0.0
+        alpha_f = 0.0
+        super().__init__(M, f_int, f_ext, K, D, alpha_m, alpha_f, beta, gamma)
+
+
 class WBZAlpha(GeneralizedAlpha):
     def __init__(self, M, f_int, f_ext, K, D, rho_inf=0.9):
-        
         """
         Parametrize generalized-alpha time integration scheme as WBZ-alpha scheme.
 
@@ -642,7 +618,7 @@ class WBZAlpha(GeneralizedAlpha):
         beta = 0.25 * (1 - alpha_m) ** 2
         gamma = 0.5 - alpha_m
         super().__init__(M, f_int, f_ext, K, D, alpha_m, alpha_f, beta, gamma)
-        return   
+        return
 
 
 class HHTAlpha(GeneralizedAlpha):
@@ -671,4 +647,85 @@ class HHTAlpha(GeneralizedAlpha):
         beta = 0.25 * (1 + alpha_f) ** 2
         gamma = 0.5 + alpha_f
         super().__init__(M, f_int, f_ext, K, D, alpha_m, alpha_f, beta, gamma)
+        return
+
+
+class VariationalMidPoint(OneStepIntegratorBase):
+    def __init__(self, M, f_int, f_ext, K, D, alpha=0.5):
+        super().__init__()
+        # Set function handles for calling in residual and jacobian
+        self.M = M
+        self.f_int = f_int
+        self.f_ext = f_ext
+        self.K = K
+        self.D = D
+
+        self.alpha = alpha
+
+    @staticmethod
+    def _get_midstep(alpha, x_n, x_p):
+        return (1 - alpha) * x_n + alpha * x_p
+
+    def residual_int(self, q_p):
+        t_m = self._get_midstep(self.alpha, self._t_n, self.t_p)
+        q_m = self._get_midstep(self.alpha, self._q_n, q_p)
+        dq_m = self._get_midstep(self.alpha, self._dq_n, self.dq_p)
+        ddq_m = self._get_midstep(self.alpha, self._ddq_n, self.ddq_p)
+
+        M = self.M(q_m, dq_m, t_m)
+        f_int_f = self.f_int(q_m, dq_m, t_m)
+
+        res = M @ ddq_m + f_int_f
+        return res
+
+    def residual_ext(self, q_p):
+        t_m = self._get_midstep(self.alpha, self._t_n, self.t_p)
+        q_m = self._get_midstep(self.alpha, self._q_n, q_p)
+        dq_m = self._get_midstep(self.alpha, self._dq_n, self.dq_p)
+
+        f_ext_f = self.f_ext(q_m, dq_m, t_m)
+
+        res = - f_ext_f
+        return res
+
+    def jacobian(self, q_p):
+        t_m = self._get_midstep(self.alpha, self._t_n, self.t_p)
+        q_m = self._get_midstep(self.alpha, self._q_n, q_p)
+        dq_m = self._get_midstep(self.alpha, self._dq_n, self.dq_p)
+
+        M = self.M(q_m, dq_m, t_m)
+        D = self.D(q_m, dq_m, t_m)
+        K = self.K(q_m, dq_m, t_m)
+
+        Jac = -1 / ((1-self.alpha) * self.dt ** 2) * M + self.alpha / ((1-self.alpha) * self.dt**2) * D + self.alpha * K
+
+        return Jac
+
+    def set_prediction(self, q_n, dq_n, ddq_n, t_n):
+        self._t_n = t_n
+        self._q_n = q_n
+        self._dq_n = dq_n
+        self._ddq_n = ddq_n
+
+        #self.q_p = copy(self._q_n)
+        self.q_p = self.dt * self._dq_n + self._q_n
+        #self.dq_p = -self.alpha/(1-self.alpha) * self._dq_n - 1/( (1-self.alpha) * self.dt ) * self._q_n
+        self.dq_p = copy(self._dq_n)
+        #self.ddq_p = 1/( self.alpha* (1-self.alpha) * self.dt ) * self._dq_n + 1/( self.alpha * (1-self.alpha) * self.dt**2 ) * self._q_n - (1-self.alpha)/self.alpha * self._ddq_n
+        self.ddq_p = -(1-self.alpha) / self.alpha * self._ddq_n
+
+        self.t_p = t_n + self.dt
+        return
+
+    def set_correction(self, q_p):
+        #delta_q_p = q_p - self.q_p
+        delta_dq_p = q_p - self.dq_p
+
+        #self.q_p = copy(q_p)
+        #self.dq_p += +1 / ((1-self.alpha) * self.dt) * delta_q_p
+        #self.ddq_p += -1 / (self.alpha* (1-self.alpha) * self.dt**2) * delta_q_p
+        self.q_p += self.dt * (1-self.alpha) * delta_dq_p
+        self.dq_p = copy(q_p)
+        self.ddq_p += 1 / (self.alpha * self.dt) * delta_dq_p
+
         return
