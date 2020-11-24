@@ -251,7 +251,7 @@ class StructuralComponent(MeshComponent):
                                                                         self._ele_obj_df['fk_mesh'].values),
                                                                         self._mapping.get_dofs_by_ids(
                                                                         self._ele_obj_df['fk_mapping'].values),
-                                                                        q, t,
+                                                                        q, dq,t,
                                                                         self._C_csr, self._f_glob_int)
         return self._C_csr, self._f_glob_int + self.D(q, dq, t).dot(dq)
 
@@ -313,3 +313,34 @@ class StructuralComponent(MeshComponent):
                                                       self._C_csr, self._f_glob_int)
 
         return self._strains, self._stresses
+
+
+    def C_Dc(self, q, dq, t):
+        """
+        Compute and return the unconstrained tangential stiffness matrix and internal force vector of the structural
+        component.
+
+        Parameters
+        ----------
+        q : ndarray
+            Displacement field in voigt notation.
+        dq : ndarray
+            Velocity field in voigt notation.
+        t : float, optional
+            Time.
+
+        Returns
+        -------
+        K : sp.sparse.sparse_matrix
+            Stiffness matrix with applied constraints in sparse CSR format.
+        f : ndarray
+            Internal nonlinear force vector after constraints have been applied
+        """
+        self._C_csr, self._f_glob_int = self._assembly.assemble_compliance_dcompliance(self._mesh.nodes, self.ele_obj,
+                                                                        self._mesh.get_iconnectivity_by_elementids(
+                                                                        self._ele_obj_df['fk_mesh'].values),
+                                                                        self._mapping.get_dofs_by_ids(
+                                                                        self._ele_obj_df['fk_mapping'].values),
+                                                                        q, dq,t,
+                                                                        self._C_csr, self._f_glob_int)
+        return self._C_csr, self._f_glob_int + self.D(q, dq, t).dot(dq)

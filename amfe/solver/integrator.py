@@ -317,7 +317,7 @@ class GeneralizedAlpha(OneStepIntegratorBase):
     gamma : float
         Newmark-parameter. Default value is calculated from alpha_m and alpha_f.
     """
-    def __init__(self, M, f_int, f_ext, K, D, alpha_m=0.4210526315789474, alpha_f=0.4736842105263158,
+    def __init__(self, M, f_int, f_ext, K, D, C_Dc, alpha_m=0.4210526315789474, alpha_f=0.4736842105263158,
                  beta=0.27700831024930755, gamma=0.5526315789473684):
         """
         Parameters
@@ -374,7 +374,7 @@ class GeneralizedAlpha(OneStepIntegratorBase):
         self.f_ext = f_ext
         self.K = K
         self.D = D
-
+        self.C_Dc = C_Dc
         # Set timeintegration parameters
         self.alpha_m = alpha_m
         self.alpha_f = alpha_f
@@ -467,9 +467,9 @@ class GeneralizedAlpha(OneStepIntegratorBase):
 
 
 class VelocityGeneralizedAlpha(GeneralizedAlpha):
-    def __init__(self, M, f_int, f_ext, K, D, alpha_m=0.4210526315789474, alpha_f=0.4736842105263158,
+    def __init__(self, M, f_int, f_ext, K, D, C_Dc, alpha_m=0.4210526315789474, alpha_f=0.4736842105263158,
                  beta=0.27700831024930755, gamma=0.5526315789473684):
-        super().__init__(M, f_int, f_ext, K, D, alpha_m=alpha_m, alpha_f=alpha_f, beta=beta, gamma=gamma)
+        super().__init__(M, f_int, f_ext, K, D, C_Dc, alpha_m=alpha_m, alpha_f=alpha_f, beta=beta, gamma=gamma)
 
     def residual_int(self, dq_p):
         """

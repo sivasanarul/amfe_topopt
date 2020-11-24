@@ -199,7 +199,7 @@ class KirchhoffMaterial(HyperelasticMaterial):
         :math:`\mathbf{E}` = Green-Lagrange strain tensor
 
     '''
-    def __init__(self, E=210E9, nu=0.3, rho=1E4, plane_stress=True, thickness=1.):
+    def __init__(self, E=210E9, E_min=1e-3, penalparam =3, nu=0.3, rho=1E4, plane_stress=True, thickness=1.):
         '''
 
         Parameters
@@ -221,7 +221,9 @@ class KirchhoffMaterial(HyperelasticMaterial):
         None
         '''
         super().__init__()
+        self._E_min = E_min
         self._E_modulus = E
+        self._penalparam = penalparam
         self._nu = nu
         self._rho = rho
         self._plane_stress = plane_stress
@@ -817,8 +819,8 @@ if use_fortran:
     def kirchhoff_S_Sv_and_C(self, E):
         return f90_material.kirchhoff_s_sv_and_c(E, self.E_modulus, self.nu)
 
-    def kirchhoff_S_Sv_and_C_2d(self, E):
-        return f90_material.kirchhoff_s_sv_and_c_2d(E, self.E_modulus, self.nu,
+    def kirchhoff_S_Sv_and_C_2d(self, E, modified_E):
+        return f90_material.kirchhoff_s_sv_and_c_2d(E, modified_E, self.nu,
                                                     self.plane_stress)
 
     def mooney_rivlin_S_Sv_and_C(self, E):

@@ -79,7 +79,7 @@ class ConstraintFormulationBase:
 
     """
     def __init__(self, no_of_dofs_unconstrained, M_func, h_func, B_func, p_func=None,
-                 jac_h_u=None, jac_h_du=None, jac_p_u=None, jac_p_du=None,
+                 jac_h_u=None, jac_h_du=None, C_Dc=None,jac_p_u=None, jac_p_du=None,
                  g_func=None, b_func=None, a_func=None):
         self._no_of_dofs_unconstrained = no_of_dofs_unconstrained
         self._M_func = M_func
@@ -93,6 +93,7 @@ class ConstraintFormulationBase:
         self._g_func = g_func
         self._b_func = b_func
         self._a_func = a_func
+        self._C_Dc   = C_Dc
         return
 
     @property

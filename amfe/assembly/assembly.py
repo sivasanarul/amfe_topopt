@@ -210,3 +210,40 @@ class Assembly:
         TODO
         """
         pass
+
+    @abc.abstractmethod
+    def assemble_compliance_dcompliance(self, nodes_df, ele_objects, connectivities, elements2dofs, dofvalues=None, t=0., K_csr=None,
+                         f_glob=None):
+        """
+        Assemble the tangential stiffness matrix and nonliner internal or external force vector.
+
+        This method can be used for assembling K_int and f_int or for assembling K_ext and f_ext depending on which
+        ele_objects and connectivities are passed
+
+        Parameters
+        ----------
+        nodes_df : pandas.DataFrame
+            Node Coordinates
+        ele_objects : ndarray
+            Ndarray with Element objects that shall be assembled
+        connectivities : list of ndarrays
+            Connectivity of the elements mapping to the indices of nodes ndarray
+        elements2dofs : list of ndarrays
+            Mapping the elements to their global dofs
+        dofvalues : ndarray
+            current values of all dofs (at time t)
+        t : float
+            time. Default: 0.
+
+        Returns
+        --------
+        K : csr_matrix
+            global stiffness matrix
+        f : ndarray
+            global internal force vector
+
+        Examples
+        ---------
+        TODO
+        """
+        pass

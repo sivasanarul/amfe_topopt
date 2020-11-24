@@ -51,6 +51,8 @@ class Element:
         self.f = None
         self.S = None
         self.E = None
+        self.Compliance = None
+        self.dCompliance = None
 
     @staticmethod
     def fields():
@@ -107,7 +109,7 @@ class Element:
         '''
         pass
 
-    def k_and_f_int(self, X, u, t=0):
+    def k_and_f_int(self, X, u, density, t=0):
         '''
         Returns the tangential stiffness matrix and the internal nodal force
         of the Element.
@@ -134,7 +136,7 @@ class Element:
         TODO
 
         '''
-        self._compute_tensors(X, u, t)
+        self._compute_tensors(X, u, density, t)
         return self.K, self.f
 
     def k_int(self, X, u, t=0):
@@ -265,3 +267,6 @@ class Element:
         '''
         self._compute_tensors(X, u, t)
         return self.K, self.f, self.S, self.E
+
+    def dcompliance(self, X, u, t):
+        return self._compute_decompliance(self, X, u, t)

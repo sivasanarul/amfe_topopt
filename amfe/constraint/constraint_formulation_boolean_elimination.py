@@ -30,10 +30,10 @@ class BooleanEliminationConstraintFormulation(ConstraintFormulationBase):
     It may only be used for constraints defined by Bu = 0 with boolean matrix B
     """
     def __init__(self, no_of_dofs_unconstrained, M_func, h_func, B_func, p_func=None,
-                 jac_h_u=None, jac_h_du=None, jac_p_u=None, jac_p_du=None,
+                 jac_h_u=None, jac_h_du=None, C_Dc=None,jac_p_u=None, jac_p_du=None,
                  g_func=None, b_func=None, a_func=None):
         super().__init__(no_of_dofs_unconstrained, M_func, h_func, B_func, p_func,
-                         jac_h_u, jac_h_du, jac_p_u, jac_p_du,
+                         jac_h_u, jac_h_du, C_Dc,jac_p_u, jac_p_du,
                          g_func, b_func, a_func)
         self._L = None
         self._L_changed = True  # Setting flag for lazy evaluation
@@ -363,13 +363,13 @@ class BooleanEliminationConstraintFormulation(ConstraintFormulationBase):
             L^T \frac{\mathrm{d}(h-p)}{\mathrm{d} u} L
 
         """
-        u = self.u(x, t)
-        du = self.du(x, dx, t)
+        #u = self.u(x, t)
+        #du = self.du(x, dx, t)
         if self._jac_h_u is not None:
             if self._jac_p_u is not None:
                 return self.L.T.dot(self._jac_h_u(u, du, t) - self._jac_p_u(u, du, t)).dot(self.L)
             else:
-                return self.L.T.dot(self._jac_h_u(u, du, t)).dot(self.L)
+                return self.L.T.dot(self._jac_h_u(x, dx, t)).dot(self.L)
         else:
             raise NotImplementedError('Numerical differentiation of h is not implemented yet')
 

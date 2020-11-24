@@ -58,7 +58,8 @@ class Quad4(Element):
         self.M = np.zeros((8,8))
         self.S = np.zeros((4,6))
         self.E = np.zeros((4,6))
-
+        self.dCompliance = 0.0
+        self.dComplianceKmatrix = np.zeros((8,8))
         # Gauss-Point-Handling:
         g1 = 1/np.sqrt(3)
 
@@ -88,7 +89,7 @@ class Quad4(Element):
                 ('N', 3, 'ux'),
                 ('N', 3, 'uy'))
 
-    def _compute_tensors(self, X, u, t):
+    def _compute_tensors(self, X, u, density, t):
         """
         Compute the tensors.
         """
@@ -119,7 +120,8 @@ class Quad4(Element):
             H = u_e.T @ B0_tilde
             F = H + np.eye(2)
             E = 1/2*(H + H.T + H.T @ H)
-            S, S_v, C_SE = self.material.S_Sv_and_C_2d(E)
+            E_mod_density = self._E_min + (self.E_modulus - self._E_min) * (density ** self._penalparam)
+            S, S_v, C_SE = self.material.S_Sv_and_C_2d(E,E_mod_density)
             B0 = compute_B_matrix(B0_tilde, F)
             K_geo_small = B0_tilde @ S @ B0_tilde.T * det*t
             K_geo = scatter_matrix(K_geo_small, 2)
@@ -152,3 +154,50 @@ class Quad4(Element):
 
         self.M = scatter_matrix(self.M_small, 2)
         return self.M
+
+    def dcompliance(self, X, uelementdof, density, t):
+        """
+        Compute the diff of compliance.
+        """
+        u = np.zeros(8)
+        X_mat = X.reshape(-1, 2)
+        u_e = u.reshape(-1, 2)
+        t = self.material.thickness
+
+        # Empty former values because they are properties and a new calculation
+        # for another element or displacement than before is called
+        self.K *= 0
+        self.f *= 0
+        self.S *= 0
+        self.E *= 0
+        self.dCompliance *= 0
+        self.dComplianceKmatrix *= 0
+        for n_gauss, (xi, eta, w) in enumerate(self.gauss_points):
+
+            dN_dxi = np.array([ [ eta/4 - 1/4,  xi/4 - 1/4],
+                                [-eta/4 + 1/4, -xi/4 - 1/4],
+                                [ eta/4 + 1/4,  xi/4 + 1/4],
+                                [-eta/4 - 1/4, -xi/4 + 1/4]])
+
+            dX_dxi = X_mat.T @ dN_dxi
+            det = dX_dxi[0,0]*dX_dxi[1,1] - dX_dxi[1,0]*dX_dxi[0,1]
+            dxi_dX = 1/det * np.array([[ dX_dxi[1,1], -dX_dxi[0,1]],
+                                       [-dX_dxi[1,0],  dX_dxi[0,0]]])
+
+            B0_tilde = dN_dxi @ dxi_dX
+            H = u_e.T @ B0_tilde
+            F = H + np.eye(2)
+            E = 1/2*(H + H.T + H.T @ H)
+            S, S_v, C_SE = self.material.S_Sv_and_C_2d(E,density)
+            B0 = compute_B_matrix(B0_tilde, F)
+            K_geo_small = B0_tilde @ S @ B0_tilde.T * det*t
+            K_geo = scatter_matrix(K_geo_small, 2)
+            K_mat = B0.T @ C_SE @ B0 *det*t
+            self.K += (K_geo + K_mat)*w
+            self.f += B0.T @ S_v*det*t*w
+            dCompliance_stiffness = -self.material._penalparam*(self.material._E_modulus - self.material._E_min)*(density
+                               **(self.material._penalparam-1))
+            _, _, C_SE_dCompliancetensor = self.material.S_Sv_and_C_2d(E, dCompliance_stiffness)
+            dComplianceKmatrix = B0.T @ C_SE_dCompliancetensor @ B0 *det*t
+        self.dCompliance   = -uelementdof*dComplianceKmatrix*uelementdof
+        return

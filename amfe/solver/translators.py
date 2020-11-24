@@ -57,7 +57,7 @@ class MechanicalSystem:
         contains tags for constant parts of the system
 
     """
-    def __init__(self, dimension, M_func, D_func, K_func, f_ext_func, f_int_func=None, constants=tuple(), strains_and_stresses_func = None):
+    def __init__(self, dimension, M_func, D_func, K_func, C_Dc_func, f_ext_func, f_int_func=None, constants=tuple(), strains_and_stresses_func = None):
         """
         The system-behavior is defined during the translator's instantiation. In the default nonlinear case, just hand
         over the system's callbacks. If a complete or partly linear system shall be defined, either use preset matrices
@@ -109,6 +109,7 @@ class MechanicalSystem:
         self._M_func = _check_and_set_attribute('M', M_func)
         self._D_func = _check_and_set_attribute('D', D_func)
         self._K_func = _check_and_set_attribute('K', K_func)
+        self._C_Dc_func = C_Dc_func
         self._strains_and_stresses_func = strains_and_stresses_func
 
         if f_int_func is None:
@@ -147,6 +148,9 @@ class MechanicalSystem:
     def K(self, q, dq, t):
         return self._K_func(q, dq, t)
 
+    def compliance_dcompliance(self, q, dq, t):
+        return self._C_Dc_func(q, dq, t)
+    
     @property
     def dimension(self):
         return self._dimension
@@ -293,14 +297,14 @@ def create_mechanical_system_from_structural_component(structural_component, con
     f_int = MemoizeStiffness(structural_component.K_and_f_int)
     K = f_int.derivative
     f_ext = structural_component.f_ext
-
+    C_Dc = structural_component.C_Dc
     dimension = structural_component.mapping.no_of_dofs
 
     if all_linear:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants,
+        system = MechanicalSystem(dimension, M, D, K, C_Dc,f_ext, constants=constants,
                                   strains_and_stresses_func=structural_component.strains_and_stresses)
     else:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants,
+        system = MechanicalSystem(dimension, M, D, K, C_Dc, f_ext, f_int, constants,
                                   strains_and_stresses_func=structural_component.strains_and_stresses)
     return system
 
@@ -342,17 +346,17 @@ def create_constrained_mechanical_system_from_component(structural_component, co
 
     M = constraint_formulation.M
     D = constraint_formulation.D
-
+    
     f_int = constraint_formulation.f_int
     K = constraint_formulation.K
     f_ext = constraint_formulation.f_ext
-
+    C_Dc = structural_component.C_Dc
     dimension = constraint_formulation.dimension
     if all_linear:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, constants=constants,
+        system = MechanicalSystem(dimension, M, D, K, C_Dc,f_ext, constants=constants,
                                   strains_and_stresses_func=structural_component.strains_and_stresses)
     else:
-        system = MechanicalSystem(dimension, M, D, K, f_ext, f_int, constants,
+        system = MechanicalSystem(dimension, M, D, K, C_Dc,f_ext, f_int, constants,
                                   strains_and_stresses_func=structural_component.strains_and_stresses)
 
     return system, constraint_formulation
@@ -401,6 +405,7 @@ def _create_constraint_formulation(mechanical_system, component, formulation, **
                                                                          mechanical_system.f_ext,
                                                                          mechanical_system.K,
                                                                          mechanical_system.D,
+                                                                         mechanical_system.compliance_dcompliance,
                                                                          g_func=
                                                                          component.g_holo)
     elif formulation == 'lagrange':

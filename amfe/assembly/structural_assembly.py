@@ -104,8 +104,8 @@ class StructuralAssembly(Assembly):
 
         return C_csr
 
-    def assemble_k_and_f(self, nodes, ele_objects, connectivities, elements2dofs, dofvalues=None, t=0., K_csr=None,
-                         f_glob=None):
+    def assemble_k_and_f(self, nodes, ele_objects, connectivities, elements2dofs, element_density_values, udof_values,
+                         t=0., K_csr=None, f_glob=None):
         """
         Assemble the tangential stiffness matrix and nonliner internal or external force vector.
 
@@ -139,10 +139,6 @@ class StructuralAssembly(Assembly):
         TODO
         """
 
-        if dofvalues is None:
-            maxdof = np.max(elements2dofs)
-            dofvalues = np.zeros(maxdof + 1)
-
         if K_csr is None:
             no_of_dofs = np.max(elements2dofs) + 1
             K_csr = self.preallocate(no_of_dofs, elements2dofs)
@@ -152,20 +148,20 @@ class StructuralAssembly(Assembly):
 
         K_csr.data[:] = 0.0
         f_glob[:] = 0.0
-
+        dofvalues = np.zeros(f_glob.size)
         # loop over all elements
         # (i - element index, indices - DOF indices of the element)
-        for ele_obj, connectivity, globaldofindices in zip(ele_objects, connectivities, elements2dofs):
+        for ele_obj, connectivity, globaldofindices, element_density in zip(ele_objects, connectivities, elements2dofs,element_density_values):
             # X - undeformed positions of the i-th element
             X_local = nodes[connectivity, :].reshape(-1)
             # displacements of the i-th element
             u_local = dofvalues[globaldofindices]
             # computation of the element tangential stiffness matrix and nonlinear force
-            K_local, f_local = ele_obj.k_and_f_int(X_local, u_local, t)
+            K_local, f_local = ele_obj.k_and_f_int(X_local, u_local, element_density, t)
             # adding the local force to the global one
             f_glob[globaldofindices] += f_local
             # this is equal to K_csr[globaldofindices, globaldofindices] += K_local
-            fill_csr_matrix(K_csr.indptr, K_csr.indices, K_csr.data, K_local, globaldofindices)
+            fill_csr_matrix(K_csr.indptr, K_csr.indices, K_csr.data, K_local, globaldofindices)  
         return K_csr, f_glob
 
     def assemble_m(self, nodes, ele_objects, connectivities, elements2dofs, dofvalues=None, t=0, M_csr=None):
@@ -345,3 +341,69 @@ class StructuralAssembly(Assembly):
             # adding the local force to the global one
             f_glob[globaldofindices] += f_local
         return f_glob
+
+    def assemble_compliance_dcompliance(self, nodes, ele_objects, connectivities, elements2dofs, element_density_values, udof_values,
+                         t=0., K_csr=None, f_glob=None):
+        """
+        Assemble the tangential stiffness matrix and nonliner internal or external force vector.
+
+        This method can be used for assembling K_int and f_int or for assembling K_ext and f_ext depending on which
+        ele_objects and connectivities are passed
+
+        Parameters
+        ----------
+        nodes : ndarray
+            Node Coordinates (rows = nodes, columns = x,y(,z) coordinates
+        ele_objects : ndarray
+            Ndarray with Element objects that shall be assembled
+        connectivities : list of ndarrays
+            Connectivity of the elements mapping to the indices of nodes ndarray
+        elements2dofs : list of ndarrays
+            Mapping the elements to their global dofs
+        dofvalues : ndarray
+            current values of all dofs (at time t)
+        t : float
+            time. Default: 0.
+
+        Returns
+        --------
+        K : csr_matrix
+            global stiffness matrix
+        f : ndarray
+            global internal force vector
+
+        Examples
+        ---------
+        TODO
+        """
+
+        if K_csr is None:
+            no_of_dofs = np.max(elements2dofs) + 1
+            K_csr = self.preallocate(no_of_dofs, elements2dofs)
+
+        if f_glob is None:
+            f_glob = np.zeros(K_csr.shape[1], dtype=float)
+
+
+        K_csr.data[:] = 0.0
+        f_glob[:] = 0.0
+        dofvalues = np.zeros(f_glob.size)
+        domaincompliance = 0.0
+        d_domaincompliance = []
+        # loop over all elements
+        # (i - element index, indices - DOF indices of the element)
+        for ele_obj, connectivity, globaldofindices, element_density in zip(ele_objects, connectivities,
+                                                                            elements2dofs, element_density_values):
+            # X - undeformed positions of the i-th element
+            X_local = nodes[connectivity, :].reshape(-1)
+            # displacements of the i-th element
+            u_local = dofvalues[globaldofindices]
+            uelementdof = udof_values[globaldofindices]
+            # computation of the element tangential stiffness matrix and nonlinear force
+            K_local, f_local = ele_obj.dcompliance(X_local, u_local, element_density, t)
+            domaincompliance += uelementdof * K_local * uelementdof
+            # adding the local force to the global one
+            f_glob[globaldofindices] += f_local
+            # this is equal to K_csr[globaldofindices, globaldofindices] += K_local
+            fill_csr_matrix(K_csr.indptr, K_csr.indices, K_csr.data, K_local, globaldofindices)
+        return K_csr, f_glob
