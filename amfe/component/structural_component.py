@@ -34,7 +34,8 @@ class StructuralComponent(MeshComponent):
         self._f_glob_ext = None
         self._stresses = None
         self._strains = None
-
+        self._compliance = None
+        self._dcompliance = None
     def g_holo(self, q, t):
         """
         Return the residual of the holonomic constraint function on displacement level
@@ -253,7 +254,7 @@ class StructuralComponent(MeshComponent):
                                                                         self._ele_obj_df['fk_mapping'].values),
                                                                         q, dq,t,
                                                                         self._C_csr, self._f_glob_int)
-        return self._C_csr, self._f_glob_int + self.D(q, dq, t).dot(dq)
+        return self._C_csr, self._f_glob_int #+ self.D(q, dq, t).dot(dq)
 
     def f_ext(self, q, dq, t):
         """
@@ -336,11 +337,11 @@ class StructuralComponent(MeshComponent):
         f : ndarray
             Internal nonlinear force vector after constraints have been applied
         """
-        self._C_csr, self._f_glob_int = self._assembly.assemble_compliance_dcompliance(self._mesh.nodes, self.ele_obj,
+        self._compliance, self._dcompliance = self._assembly.assemble_compliance_dcompliance(self._mesh.nodes, self.ele_obj,
                                                                         self._mesh.get_iconnectivity_by_elementids(
                                                                         self._ele_obj_df['fk_mesh'].values),
                                                                         self._mapping.get_dofs_by_ids(
                                                                         self._ele_obj_df['fk_mapping'].values),
                                                                         q, dq,t,
                                                                         self._C_csr, self._f_glob_int)
-        return self._C_csr, self._f_glob_int + self.D(q, dq, t).dot(dq)
+        return self._compliance, self._dcompliance

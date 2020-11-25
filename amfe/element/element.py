@@ -268,5 +268,6 @@ class Element:
         self._compute_tensors(X, u, t)
         return self.K, self.f, self.S, self.E
 
-    def dcompliance(self, X, u, t):
-        return self._compute_decompliance(self, X, u, t)
+    def compliance(self, X, u, element_density, t):
+        self._compute_decompliance(X, u, element_density, t)
+        return self.Compliance, self.dCompliance

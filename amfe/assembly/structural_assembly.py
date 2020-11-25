@@ -400,10 +400,7 @@ class StructuralAssembly(Assembly):
             u_local = dofvalues[globaldofindices]
             uelementdof = udof_values[globaldofindices]
             # computation of the element tangential stiffness matrix and nonlinear force
-            K_local, f_local = ele_obj.dcompliance(X_local, u_local, element_density, t)
-            domaincompliance += uelementdof * K_local * uelementdof
-            # adding the local force to the global one
-            f_glob[globaldofindices] += f_local
-            # this is equal to K_csr[globaldofindices, globaldofindices] += K_local
-            fill_csr_matrix(K_csr.indptr, K_csr.indices, K_csr.data, K_local, globaldofindices)
-        return K_csr, f_glob
+            Compliance, dCompliance = ele_obj.compliance(X_local, u_local, element_density, t)
+            domaincompliance += Compliance
+            d_domaincompliance.append(dCompliance)
+        return domaincompliance, d_domaincompliance

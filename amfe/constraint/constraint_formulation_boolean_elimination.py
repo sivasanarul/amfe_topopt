@@ -363,13 +363,14 @@ class BooleanEliminationConstraintFormulation(ConstraintFormulationBase):
             L^T \frac{\mathrm{d}(h-p)}{\mathrm{d} u} L
 
         """
-        #u = self.u(x, t)
+        du = self.u(dx, t)
+        u  = x
         #du = self.du(x, dx, t)
         if self._jac_h_u is not None:
             if self._jac_p_u is not None:
                 return self.L.T.dot(self._jac_h_u(u, du, t) - self._jac_p_u(u, du, t)).dot(self.L)
             else:
-                return self.L.T.dot(self._jac_h_u(x, dx, t)).dot(self.L)
+                return self.L.T.dot(self._jac_h_u(u, du, t)).dot(self.L)
         else:
             raise NotImplementedError('Numerical differentiation of h is not implemented yet')
 
