@@ -86,7 +86,7 @@ class MechanicalSystem:
 
         # Set linear system-parts
         if 'all' in constants:
-            constants = ('M', 'D', 'K')
+            constants = ('M', 'D', 'K','C_Dc')
             if f_int_func is not None:
                 print('f_int was passed while constants is set "all". Falling back to nonlinear case.')
 
@@ -109,7 +109,7 @@ class MechanicalSystem:
         self._M_func = _check_and_set_attribute('M', M_func)
         self._D_func = _check_and_set_attribute('D', D_func)
         self._K_func = _check_and_set_attribute('K', K_func)
-        self._C_Dc_func = C_Dc_func
+        self._C_Dc_func = _check_and_set_attribute('C_Dc',C_Dc_func)
         self._strains_and_stresses_func = strains_and_stresses_func
 
         if f_int_func is None:
@@ -350,7 +350,7 @@ def create_constrained_mechanical_system_from_component(structural_component, co
     f_int = constraint_formulation.f_int
     K = constraint_formulation.K
     f_ext = constraint_formulation.f_ext
-    C_Dc = structural_component.C_Dc
+    C_Dc = constraint_formulation.C_Dc
     dimension = constraint_formulation.dimension
     if all_linear:
         system = MechanicalSystem(dimension, M, D, K, C_Dc,f_ext, constants=constants,

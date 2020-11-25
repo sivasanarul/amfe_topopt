@@ -114,6 +114,8 @@ class Mesh:
         """
         return self._el_df.index.values
 
+
+
     @property
     def el_df(self):
         return self._el_df
@@ -1189,3 +1191,11 @@ class Mesh:
         self._iconnectivity_df_cached = pd.DataFrame(self._el_df['connectivity'].apply(self.get_nodeidxs_by_nodeids),
                                                      index=self._el_df.index)
         self._iconnectivity_df_cached.columns = ['iconnectivity']
+
+    @property
+    def element_midpoint(self):
+        """
+        Returns all element-ids, that are part of the mesh
+        """
+        self.g
+        return self._el_df.index.values

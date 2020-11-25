@@ -30,10 +30,10 @@ class BooleanEliminationConstraintFormulation(ConstraintFormulationBase):
     It may only be used for constraints defined by Bu = 0 with boolean matrix B
     """
     def __init__(self, no_of_dofs_unconstrained, M_func, h_func, B_func, p_func=None,
-                 jac_h_u=None, jac_h_du=None, C_Dc=None,jac_p_u=None, jac_p_du=None,
+                 jac_h_u=None, jac_h_du=None, C_Dc_u=None,jac_p_u=None, jac_p_du=None,
                  g_func=None, b_func=None, a_func=None):
         super().__init__(no_of_dofs_unconstrained, M_func, h_func, B_func, p_func,
-                         jac_h_u, jac_h_du, C_Dc,jac_p_u, jac_p_du,
+                         jac_h_u, jac_h_du, C_Dc_u,jac_p_u, jac_p_du,
                          g_func, b_func, a_func)
         self._L = None
         self._L_changed = True  # Setting flag for lazy evaluation
@@ -409,3 +409,7 @@ class BooleanEliminationConstraintFormulation(ConstraintFormulationBase):
                 return self.L.T.dot(self._jac_h_du(u, du, t)).dot(self.L)
         else:
             raise NotImplementedError('Numerical differentiation of h is not implemented yet')
+
+    def C_Dc(self, x, dx, t):
+        u = self.u(dx,t)
+        return  self._C_Dc_func(x,u,t)

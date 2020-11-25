@@ -93,7 +93,7 @@ class ConstraintFormulationBase:
         self._g_func = g_func
         self._b_func = b_func
         self._a_func = a_func
-        self._C_Dc   = C_Dc
+        self._C_Dc_func   = C_Dc
         return
 
     @property
